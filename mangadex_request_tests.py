@@ -1,5 +1,6 @@
 import requests
 
+#
 # MangaDex API endpoint
 url = "https://api.mangadex.org/manga"
 

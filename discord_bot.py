@@ -17,6 +17,7 @@ from mangadex_tracker import (
     confirm_remove_by_index,
 )
 
+#
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 user_pending_searches = {}

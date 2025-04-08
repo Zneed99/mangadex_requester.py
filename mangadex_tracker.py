@@ -46,7 +46,7 @@ def check_for_updates(observed_series, return_messages=False):
         if last_seen_id != latest_id:
             chapter_number = chapter_info.get("chapter", "N/A")
             chapter_title = chapter_info.get("title", "No title")
-            chapter_url = f"https://mangadex.org/chapter/{latest_id}"
+            chapter_url = f"https://mangadex.org/chapter/{latest_id}/1"
             manga_title = observed_series[manga_id]["title"]
 
             # Update the saved state
@@ -57,6 +57,7 @@ def check_for_updates(observed_series, return_messages=False):
 
             # Format update message
             message = (
+                f"🔔 **@everyone**\n"
                 f"📢 **New Chapter Released!**\n"
                 f"**{manga_title}** – Chapter {chapter_number}: {chapter_title}\n"
                 f"{chapter_url}"

@@ -95,7 +95,7 @@ def check_for_updates(observed_series, return_messages=False):
                 color=0x00FF00
             )
             if cover_url:
-                embed.set_thumbnail(url=cover_url)
+                embed.set_image(url=md_cover_url)
 
             view = View(timeout=None)
             view.add_item(Button(label="📖 Jump to Chapter", url=scraper_read_link))

@@ -50,7 +50,7 @@ async def start_polling(channel):
                 await channel.send(msg)
 
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(1800)
 
 #Events
 

@@ -7,7 +7,7 @@ url = "https://api.mangadex.org/manga"
 # Optional: You can pass query parameters, for example to filter by title or language
 params = {
     "availableTranslatedLanguage[]": "en",  # Only English translations
-    "title": "One Piece",  # Search for a title (optional)
+    "title": "The Swordmaster's Son",  # Search for a title (optional)
 }
 
 response = requests.get(url, params=params)

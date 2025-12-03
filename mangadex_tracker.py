@@ -2,6 +2,8 @@ import requests
 import time
 import json
 import os
+from manga_scraper import get_latest_chapter_from_config
+
 
 STATE_FILE = "observed_series.json"
 
@@ -35,38 +37,66 @@ def check_for_updates(observed_series, return_messages=False):
     updated = False
     messages = []
 
-    for manga_id in observed_series:
-        latest_id, chapter_info = get_latest_english_chapter(manga_id)
+    for manga_id, series_data in observed_series.items():
+        manga_title = series_data["title"]
+        last_seen_number = safe_chapter_number(series_data.get("last_chapter_number", 0))
 
-        if latest_id is None:
-            continue
+        # --- Primary check: MangaDex ---
+        md_latest_id, md_chapter_info, _ = get_latest_english_chapter(manga_id)
+        md_chapter_number = None
+        md_chapter_title = None
+        md_chapter_url = None
 
-        last_seen_id = observed_series[manga_id]["last_chapter_id"]
+        if md_latest_id:
+            md_chapter_number = float(md_chapter_info.get("chapter", 0))
+            md_chapter_title = md_chapter_info.get("title", "No title")
+            md_chapter_url = f"https://mangadex.org/chapter/{md_latest_id}/1"
 
-        if last_seen_id != latest_id:
-            chapter_number = chapter_info.get("chapter", "N/A")
-            chapter_title = chapter_info.get("title", "No title")
-            chapter_url = f"https://mangadex.org/chapter/{latest_id}/1"
-            manga_title = observed_series[manga_id]["title"]
+        # --- Secondary check: optional scraper ---
+        scraper_chapter_number = None
+        scraper_read_link = None
 
-            # Update the saved state
-            observed_series[manga_id]["last_chapter_id"] = latest_id
-            observed_series[manga_id]["last_chapter_number"] = chapter_number
-            observed_series[manga_id]["last_chapter_title"] = chapter_title
-            updated = True
+        if series_data.get("optional_scraper"):
+            scraper_config = series_data["optional_scraper"]
+            scraper_chapter_number, scraper_read_link = get_latest_chapter_from_config(scraper_config)
+            if scraper_chapter_number is not None:
+                scraper_chapter_number = float(scraper_chapter_number)
 
-            # Format update message
-            message = (
+        # --- Decide which chapter to use ---
+        latest_chapter_number = last_seen_number
+        latest_message = None
+
+        # Compare MangaDex and scraper
+
+        if md_chapter_number and md_chapter_number > last_seen_number:
+            latest_chapter_number = md_chapter_number
+            latest_message = (
                 f"🔔 **@everyone**\n"
                 f"📢 **New Chapter Released!**\n"
-                f"**{manga_title}** – Chapter {chapter_number}: {chapter_title}\n"
-                f"{chapter_url}"
+                f"**{manga_title}** – Chapter {md_chapter_number}: {md_chapter_title}\n"
+                f"{md_chapter_url}"
             )
 
-            messages.append(message)
+        if scraper_chapter_number and scraper_chapter_number > latest_chapter_number:
+            latest_chapter_number = scraper_chapter_number
+            
+            latest_message = (
+                f"🔔 **@everyone**\n"
+                f"📢 **New Chapter Released (Secondary Source)!**\n"
+                f"**{manga_title}** – Chapter {scraper_chapter_number}\n"
+                f"{scraper_read_link}"
+            )
 
-            if not return_messages:
-                print(message)
+        # Update state and append message
+        if latest_chapter_number > last_seen_number and latest_message:
+            series_data["last_chapter_number"] = str(latest_chapter_number)
+            if md_chapter_number == latest_chapter_number:
+                series_data["last_chapter_id"] = md_latest_id
+                series_data["last_chapter_title"] = md_chapter_title
+            else:
+                series_data["last_chapter_title"] = "N/A"
+            updated = True
+            messages.append(latest_message)
 
     if updated:
         save_observed_series(observed_series)
@@ -233,14 +263,14 @@ def get_latest_english_chapter(manga_id, return_message=False):
                 )
                 return chapter_id, chapter_attrs, message
 
-            return chapter_id, chapter_attrs
+            return chapter_id, chapter_attrs, None  # <-- always 3 values
         else:
             return None, None, "⚠️ No English chapters found."
 
     except requests.RequestException as e:
         error_msg = f"❌ Request error for manga {manga_id}: {e}"
         print(error_msg)
-        return None, None, error_msg if return_message else (None, None)
+        return None, None, error_msg
 
 
 def get_manga_by_title(title):
@@ -340,11 +370,34 @@ def show_manga_info(title, observed_series):
 
     return "❌ No tracked series match that title."
 
+# Helper functions
+def safe_chapter_number(value):
+    """Convert chapter number to int safely. Returns 0 if invalid."""
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return 0
+
 
 # --- Main ---
 
 if __name__ == "__main__":
     print("✅ MangaDex Tracker started...")
+
+    # print("✅ Running test of check_for_updates with optional scraper...")
+
+    # observed_series = load_observed_series()
+
+    # # Run the check
+    # messages = check_for_updates(observed_series, return_messages=True)
+
+    # if messages:
+    #     print("\n📢 Updates found:")
+    #     for msg in messages:
+    #         print(msg)
+    # else:
+    #     print("✅ No new chapters found.")
+
 
     # # Load or initialize the observed_series from file
     # observed_series = load_observed_series()

@@ -1,20 +1,59 @@
 {
     "a1c7c817-4e59-43b7-9365-09675a149a6f": {
         "title": "One Piece",
-        "last_chapter_id": "9ab2b839-8691-4836-95e7-50e8b5fc8e55",
-        "last_chapter_number": "1144",
-        "last_chapter_title": "A Time for Warriors"
+        "last_chapter_id": "5a7eb69f-e946-4fdb-aaa3-9a4561c11235",
+        "last_chapter_number": "1167.0",
+        "last_chapter_title": "Ida's Sons",
+        "optional_scraper": {}
     },
     "304ceac3-8cdb-4fe7-acf7-2b6ff7a60613": {
         "title": "Attack on Titan",
-        "last_chapter_id": "db1e01a1-9b42-4333-9771-12d3560d813b",
-        "last_chapter_number": "139.5",
-        "last_chapter_title": "Bad Boy"
+        "last_chapter_id": "a2e05215-4d19-401e-8526-7659b2ddcc19",
+        "last_chapter_number": "1",
+        "last_chapter_title": "To You, 2000 Years From Now",
+        "optional_scraper": {}
     },
     "6b1eb93e-473a-4ab3-9922-1a66d2a29a4a": {
         "title": "Naruto",
-        "last_chapter_id": "1530a279-ea16-4ffc-85b2-7fc58da27d75",
-        "last_chapter_number": "289",
-        "last_chapter_title": null
+        "last_chapter_id": "1d051bcb-3b18-419a-ad8b-c77284e1276c",
+        "last_chapter_number": "3",
+        "last_chapter_title": "Enter Sasuke!",
+        "optional_scraper": {}
+    },
+    "e7eabe96-aa17-476f-b431-2497d5e9d060": {
+        "title": "Black Clover",
+        "last_chapter_id": "095da858-97bf-4441-a2bf-d45a5ae70a6c",
+        "last_chapter_number": "386.0",
+        "last_chapter_title": "Voltage",
+        "optional_scraper": {}
+    },
+    "936f0ba5-ca65-4de4-99b1-528c02a4454d": {
+        "title": "HUNTER x HUNTER (Official Colored)",
+        "last_chapter_id": "2743a7bd-e9fa-4f7a-9d4c-f30087ce73e2",
+        "last_chapter_number": "338",
+        "last_chapter_title": "Atop A Tree",
+        "optional_scraper": {}
+    },
+    "85a8ebda-9959-4244-ad03-a2d9f6a746a2": {
+        "title": "The Swordmaster's Son",
+        "last_chapter_id": "83eadea0-a1e6-47ff-9667-3f8b4d7385a0",
+        "last_chapter_number": "187.0",
+        "last_chapter_title": "N/A",
+        "optional_scraper": {
+            "check_url": "https://asuracomic.net/series/swordmasters-youngest-son-6e5de4f5",
+            "check_selector": "h3.text-sm.text-white.font-medium",
+            "read_url_template": "https://www.toongod.org/webtoon/swordmasters-youngest-son-beaabc/chapter-{}"
+        }
+    },
+    "4ada20eb-085a-491a-8c49-477ab42014d7": {
+        "title": "The Beginning After the End",
+        "last_chapter_id": "76ae424b-be88-4cee-b31e-eb8d1ba1a560",
+        "last_chapter_number": "225.0",
+        "last_chapter_title": "N/A",
+        "optional_scraper": {
+            "check_url": "https://ww8.thebeginningaftertheendmanga.com/",
+            "check_selector": "span.kt-svg-icon-list-text",
+            "read_url_template": "https://ww8.thebeginningaftertheendmanga.com/manga/the-beginning-after-the-end-chapter-{}"
+        }
     }
 }

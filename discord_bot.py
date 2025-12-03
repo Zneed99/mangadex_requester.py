@@ -31,11 +31,11 @@ observed_series = load_observed_series()
 
 
 async def start_polling(channel):
-    observed_series = load_observed_series()
     await channel.send("👀 Manga tracker is watching for updates...")
 
     while True:
         print("🔄 Checking for chapter updates...")
+        observed_series = load_observed_series()
         messages = check_for_updates(observed_series, return_messages=True)
 
         for msg in messages:
@@ -88,9 +88,23 @@ async def select(interaction: discord.Interaction, number: int):
         await interaction.response.send_message("❌ Invalid selection.")
         return
 
+    # Finalize MangaDex tracking
     message = finalize_tracking(index, choices, observed_series)
+
+    # Ensure optional_scraper exists but empty
+    selected_title, selected_id, _ = choices[index]
+    if "optional_scraper" not in observed_series[selected_id]:
+        observed_series[selected_id]["optional_scraper"] = {
+            "check_url": None,
+            "check_selector": None,
+            "read_url_template": None
+        }
+        from mangadex_tracker import save_observed_series
+        save_observed_series(observed_series)
+
     await interaction.response.send_message(message)
     user_pending_searches.pop(interaction.user.id, None)
+
 
 
 @tree.command(name="untrack", description="Untrack a manga by title")
@@ -157,6 +171,38 @@ async def recheck(interaction: discord.Interaction):
     )
     check_for_updates(observed_series, return_messages=True)
     await interaction.followup.send("✅ Recheck complete")
+
+@tree.command(name="configure", description="Configure optional scraper for a tracked manga")
+@app_commands.describe(
+    title="Title of the tracked manga",
+    check_url="URL to check for latest chapter",
+    check_selector="CSS selector to find latest chapter",
+    read_url_template="Template URL to read the chapter, use {} for chapter number"
+)
+async def configure(
+    interaction: discord.Interaction,
+    title: str,
+    check_url: str,
+    check_selector: str,
+    read_url_template: str
+):
+    # Find the manga in observed_series
+    for mid, info in observed_series.items():
+        if title.lower() in info["title"].lower():
+            info["optional_scraper"] = {
+                "check_url": check_url,
+                "check_selector": check_selector,
+                "read_url_template": read_url_template
+            }
+            from mangadex_tracker import save_observed_series
+            save_observed_series(observed_series)
+            await interaction.response.send_message(
+                f"✅ Optional scraper configured for **{info['title']}**."
+            )
+            return
+
+    await interaction.response.send_message(f"❌ No tracked series found matching '{title}'.")
+
 
 
 client.run(TOKEN)

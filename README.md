@@ -1,6 +1,4 @@
 # mangadex_requester.py
 This repository is made to make requests to Mangadex.org
-<<<<<<< HEAD
+It also now has a secondary source for scraping series that are not updated on mangadex
 #
-=======
->>>>>>> d3ba268313e25187abace9b1f886e686638901f7

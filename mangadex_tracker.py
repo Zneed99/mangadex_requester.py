@@ -1,8 +1,10 @@
 import requests
-import time
 import json
 import os
+import discord
 from manga_scraper import get_latest_chapter_from_config
+from discord.ui import View, Button
+from discord import Embed, ui, ButtonStyle
 
 
 STATE_FILE = "observed_series.json"
@@ -32,74 +34,88 @@ def manual_recheck():
 
 # --- Tracker ---
 
-
 def check_for_updates(observed_series, return_messages=False):
-    updated = False
     messages = []
 
     for manga_id, series_data in observed_series.items():
-        manga_title = series_data["title"]
-        last_seen_number = safe_chapter_number(series_data.get("last_chapter_number", 0))
+        manga_title = series_data.get("title", "Unknown Title")
+        last_seen_number = float(series_data.get("last_chapter_number", 0))
+        cover_url = series_data.get("cover_url")  # optional stored cover
 
-        # --- Primary check: MangaDex ---
+        # --- fetch latest MangaDex chapter ---
         md_latest_id, md_chapter_info, _ = get_latest_english_chapter(manga_id)
-        md_chapter_number = None
-        md_chapter_title = None
-        md_chapter_url = None
+        md_chapter_number = float(md_chapter_info.get("chapter", 0)) if md_chapter_info else None
+        md_chapter_title = md_chapter_info.get("title", "No title") if md_chapter_info else ""
+        md_chapter_url = f"https://mangadex.org/chapter/{md_latest_id}" if md_latest_id else None
+        md_cover_url = series_data.get("cover_url")
 
-        if md_latest_id:
-            md_chapter_number = float(md_chapter_info.get("chapter", 0))
-            md_chapter_title = md_chapter_info.get("title", "No title")
-            md_chapter_url = f"https://mangadex.org/chapter/{md_latest_id}/1"
-
-        # --- Secondary check: optional scraper ---
+        # --- optional scraper ---
         scraper_chapter_number = None
         scraper_read_link = None
+        optional_scraper = series_data.get("optional_scraper")
+        if optional_scraper:
+            s_chapter_number, s_read_link = get_latest_chapter_from_config(optional_scraper)
+            if s_chapter_number is not None:
+                scraper_chapter_number = float(s_chapter_number)
+                scraper_read_link = s_read_link
 
-        if series_data.get("optional_scraper"):
-            scraper_config = series_data["optional_scraper"]
-            scraper_chapter_number, scraper_read_link = get_latest_chapter_from_config(scraper_config)
-            if scraper_chapter_number is not None:
-                scraper_chapter_number = float(scraper_chapter_number)
-
-        # --- Decide which chapter to use ---
+        # --- decide which chapter to notify ---
         latest_chapter_number = last_seen_number
-        latest_message = None
+        latest_embed = None
+        latest_view = None
 
-        # Compare MangaDex and scraper
-
+        # --- MangaDex chapter ---
         if md_chapter_number and md_chapter_number > last_seen_number:
             latest_chapter_number = md_chapter_number
-            latest_message = (
-                f"🔔 **@everyone**\n"
-                f"📢 **New Chapter Released!**\n"
-                f"**{manga_title}** – Chapter {md_chapter_number}: {md_chapter_title}\n"
-                f"{md_chapter_url}"
+            embed = Embed(
+                title=f"📢 New Chapter Released! {manga_title}",
+                description=f"Chapter {md_chapter_number}: {md_chapter_title}",
+                color=0x1ABC9C
             )
+            if md_cover_url:
+                embed.set_image(url=md_cover_url)
 
+            view = View(timeout=None)
+            view.add_item(Button(label="📖 Jump to Chapter", url=md_chapter_url))
+            view.add_item(Button(
+                label="✅ Mark as Read",
+                style=ButtonStyle.success,
+                custom_id=f"markread_{manga_id}_{md_chapter_number}"
+            ))
+
+            latest_embed = embed
+            latest_view = view
+
+        # --- Optional scraper chapter ---
         if scraper_chapter_number and scraper_chapter_number > latest_chapter_number:
             latest_chapter_number = scraper_chapter_number
-            
-            latest_message = (
-                f"🔔 **@everyone**\n"
-                f"📢 **New Chapter Released (Secondary Source)!**\n"
-                f"**{manga_title}** – Chapter {scraper_chapter_number}\n"
-                f"{scraper_read_link}"
+            embed = Embed(
+                title=f"📢 New Chapter Released (Secondary Source)! {manga_title}",
+                description=f"Chapter {scraper_chapter_number}",
+                color=0x00FF00
             )
+            if cover_url:
+                embed.set_thumbnail(url=cover_url)
 
-        # Update state and append message
-        if latest_chapter_number > last_seen_number and latest_message:
+            view = View(timeout=None)
+            view.add_item(Button(label="📖 Jump to Chapter", url=scraper_read_link))
+            view.add_item(Button(
+                label="✅ Mark as Read",
+                style=ButtonStyle.success,
+                custom_id=f"markread_{manga_id}_{scraper_chapter_number}"
+            ))
+
+            latest_embed = embed
+            latest_view = view
+
+        # --- update observed_series and save ---
+        if latest_chapter_number > last_seen_number:
             series_data["last_chapter_number"] = str(latest_chapter_number)
-            if md_chapter_number == latest_chapter_number:
-                series_data["last_chapter_id"] = md_latest_id
-                series_data["last_chapter_title"] = md_chapter_title
+            save_observed_series(observed_series)
+            if return_messages:
+                messages.append((latest_embed, latest_view))
             else:
-                series_data["last_chapter_title"] = "N/A"
-            updated = True
-            messages.append(latest_message)
-
-    if updated:
-        save_observed_series(observed_series)
+                print(f"New chapter for {manga_title}: {latest_chapter_number}")
 
     return messages if return_messages else None
 
@@ -131,6 +147,32 @@ def search_manga_titles_for_tracking(search_title):
     except requests.RequestException as e:
         return f"❌ Error contacting MangaDex: {e}", []
 
+def fetch_manga_cover(manga_id: str) -> str | None:
+    """
+    Fetch the cover URL for a MangaDex series by its manga_id.
+    Returns None if no cover is found.
+    """
+    try:
+        manga_url = f"https://api.mangadex.org/manga/{manga_id}"
+        resp = requests.get(manga_url)
+        resp.raise_for_status()
+        manga_json = resp.json()
+
+        # Look for the cover_art relationship
+        cover_file = None
+        for rel in manga_json.get("data", {}).get("relationships", []):
+            if rel.get("type") == "cover_art":
+                cover_file = rel.get("attributes", {}).get("fileName")
+                break
+
+        if cover_file:
+            return f"https://uploads.mangadex.org/covers/{manga_id}/{cover_file}"
+
+    except requests.RequestException as e:
+        print(f"❌ Failed to fetch cover for {manga_id}: {e}")
+
+    return None
+
 
 def finalize_tracking(selection_index, choices, observed_series):
     selected_title, selected_id, selected_entry = choices[selection_index]
@@ -138,6 +180,7 @@ def finalize_tracking(selection_index, choices, observed_series):
     if selected_id in observed_series:
         return f"⚠️ '{selected_title}' is already being tracked."
 
+    # Fetch latest English chapter
     chapter_url = "https://api.mangadex.org/chapter"
     chap_params = {
         "manga": selected_id,
@@ -159,13 +202,21 @@ def finalize_tracking(selection_index, choices, observed_series):
         chapter_number = chapter["attributes"].get("chapter", "N/A")
         chapter_title = chapter["attributes"].get("title", "No title")
 
+        # Fetch manga cover
+        cover_url = fetch_manga_cover(selected_id)
+
+        # Add series to observed_series with all fields
         observed_series[selected_id] = {
             "title": selected_title,
             "last_chapter_id": chapter_id,
             "last_chapter_number": chapter_number,
             "last_chapter_title": chapter_title,
+            "cover_url": cover_url,
+            "read_chapters": [],  # Start empty; used for unread tracking
+            # optional_scraper can be added later via /configure
         }
 
+        # Save updated series
         save_observed_series(observed_series)
 
         return (
@@ -176,6 +227,8 @@ def finalize_tracking(selection_index, choices, observed_series):
 
     except requests.RequestException as e:
         return f"❌ Error fetching chapter data: {e}"
+
+
 
 
 def remove_series_by_title(title, observed_series):
@@ -377,6 +430,28 @@ def safe_chapter_number(value):
         return int(float(value))
     except (ValueError, TypeError):
         return 0
+    
+# UI Functions
+
+def create_chapter_buttons(manga_id, chapter_number, read_url):
+    view = View()
+
+    # Jump to chapter button
+    view.add_item(Button(label="📖 Jump to Chapter", url=read_url))
+
+    # Mark as read button (GREEN)
+    custom_id = f"markread_{manga_id}_{chapter_number}"
+    view.add_item(
+        Button(
+            label="✅ Mark as Read",
+            style=discord.ButtonStyle.green,
+            custom_id=custom_id
+        )
+    )
+
+    return view
+
+
 
 
 # --- Main ---

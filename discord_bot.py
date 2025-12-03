@@ -1,6 +1,7 @@
 import discord
 import os
 import asyncio
+import requests
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -8,6 +9,7 @@ from mangadex_tracker import (
     load_observed_series,
     remove_series_by_title,
     list_tracked_series,
+    save_observed_series,
     show_latest_chapter,
     search_manga_title,
     show_manga_info,
@@ -22,6 +24,8 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 user_pending_searches = {}
 user_pending_removals = {}
+
+GUILD = 1326213967642628096
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -39,25 +43,67 @@ async def start_polling(channel):
         messages = check_for_updates(observed_series, return_messages=True)
 
         for msg in messages:
-            await channel.send(msg)
+            if isinstance(msg, tuple):
+                embed, view = msg  # unpack the tuple
+                await channel.send(embed=embed, view=view)
+            else:
+                await channel.send(msg)
 
-        await asyncio.sleep(3600)
 
+        await asyncio.sleep(10)
+
+#Events
 
 @client.event
 async def on_ready():
-    await tree.sync()
     print(f"✅ Logged in as {client.user}")
+    print("Bot is in guilds:")
+    for g in client.guilds:
+        print(f" - {g.name} ({g.id})")
 
-    channel_id = 1326213968527753340
-    channel = client.get_channel(channel_id)
+    # Use a specific guild for fast updates (testing)
+    guild_obj = discord.Object(id=GUILD)  # your guild ID
+    try:
+        synced = await tree.sync(guild=guild_obj)
+        print(f"Synced {len(synced)} commands to guild {GUILD}")
+    except discord.HTTPException as e:
+        print(f"❌ Failed to sync commands: {e}")
 
-    if channel:
-        await channel.send("✅ MangaDex bot is online!")
-        client.loop.create_task(start_polling(channel))
-    else:
-        print("❌ Failed to find the update channel. Check channel ID.")
+    # Find your channel
+    channel = client.get_channel(1326213968527753340)
+    if not channel:
+        channel = await client.fetch_channel(1326213968527753340)
+    if not channel:
+        print("❌ Could not find channel")
+        return
 
+    await channel.send("✅ MangaDex bot is online!")
+    client.loop.create_task(start_polling(channel))
+
+
+
+
+
+@client.event
+async def on_interaction(interaction):
+    if interaction.type == discord.InteractionType.component:
+        custom_id = interaction.data.get("custom_id")
+        if custom_id and custom_id.startswith("markread_"):
+            _, manga_id, chapter_number = custom_id.split("_")
+            info = observed_series.get(manga_id)
+            if info:
+                read = info.setdefault("read_chapters", [])
+                if chapter_number not in read:
+                    read.append(chapter_number)
+                    save_observed_series(observed_series)
+                await interaction.response.send_message(
+                    f"✅ Chapter {chapter_number} marked as read for {info['title']}",
+                    ephemeral=True
+                )
+
+
+
+#Commands
 
 @tree.command(name="track", description="Search for a manga to track")
 @app_commands.describe(title="Title of the manga you want to track")
@@ -104,7 +150,6 @@ async def select(interaction: discord.Interaction, number: int):
 
     await interaction.response.send_message(message)
     user_pending_searches.pop(interaction.user.id, None)
-
 
 
 @tree.command(name="untrack", description="Untrack a manga by title")
@@ -203,6 +248,96 @@ async def configure(
 
     await interaction.response.send_message(f"❌ No tracked series found matching '{title}'.")
 
+@tree.command(name="unread", description="Show unread chapters for a tracked manga")
+@app_commands.describe(title="Title of the tracked manga")
+async def unread(interaction: discord.Interaction, title: str):
+
+    for mid, info in observed_series.items():
+        if title.lower() in info["title"].lower():
+
+            last_number = float(info.get("last_chapter_number", 0))
+
+            # Convert read_chapters to floats safely
+            read_raw = info.get("read_chapters", [])
+            read = []
+            for x in read_raw:
+                try:
+                    read.append(float(x))
+                except:
+                    pass
+
+            max_read = max(read) if read else 0  # default = nothing read
+
+            # Determine unread range
+            start = int(max_read) + 1
+            end = int(last_number)
+
+            if start > end:
+                await interaction.response.send_message(
+                    f"✅ All chapters read for **{info['title']}**"
+                )
+                return
+
+            unread_chapters = list(range(start, end + 1))
+
+            await interaction.response.send_message(
+                f"📘 **Unread chapters for {info['title']}:** {', '.join(str(c) for c in unread_chapters)}"
+            )
+            return
+
+    await interaction.response.send_message(
+        f"❌ No tracked series found matching '{title}'"
+    )
+
+
+@tree.command(name="mark_read", description="Mark a chapter as read")
+@app_commands.describe(title="Title of the tracked manga", chapter="Chapter number to mark as read")
+async def mark_read(interaction: discord.Interaction, title: str, chapter: str):
+    for mid, info in observed_series.items():
+        if title.lower() in info["title"].lower():
+            read = info.setdefault("read_chapters", [])
+            if chapter not in read:
+                read.append(chapter)
+                from mangadex_tracker import save_observed_series
+                save_observed_series(observed_series)
+                await interaction.response.send_message(f"✅ Chapter {chapter} marked as read for {info['title']}")
+            else:
+                await interaction.response.send_message(f"⚠️ Chapter {chapter} was already marked as read.")
+            return
+
+    await interaction.response.send_message(f"❌ No tracked series found matching '{title}'")
+
+@tree.command(name="update", description="Update missing info (like cover images) for all tracked manga")
+async def update(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+    updated_count = 0
+
+    for manga_id, series_data in observed_series.items():
+        # Check if cover_url is missing or empty
+        if not series_data.get("cover_url"):
+            try:
+                manga_url = f"https://api.mangadex.org/manga/{manga_id}"
+                resp = requests.get(manga_url)
+                resp.raise_for_status()
+                manga_json = resp.json()
+                cover_file = None
+
+                for rel in manga_json["data"]["relationships"]:
+                    if rel["type"] == "cover_art":
+                        cover_file = rel["attributes"]["fileName"]
+                        break
+
+                if cover_file:
+                    cover_url = f"https://uploads.mangadex.org/covers/{manga_id}/{cover_file}"
+                    series_data["cover_url"] = cover_url
+                    updated_count += 1
+
+            except requests.RequestException as e:
+                print(f"❌ Failed to update {series_data.get('title', manga_id)}: {e}")
+                continue
+
+    save_observed_series(observed_series)
+    await interaction.followup.send(f"✅ Update complete! Added cover images to {updated_count} manga.")
 
 
 client.run(TOKEN)

@@ -41,7 +41,7 @@ async def start_polling(channel):
         for msg in messages:
             await channel.send(msg)
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(3600)
 
 
 @client.event

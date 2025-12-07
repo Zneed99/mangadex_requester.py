@@ -4,4 +4,6 @@ It also now has a secondary source for scraping series that are not updated on m
 #
 
 Install path
-nssm install "MangaDexRequester2.0" "C:\Users\holme\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\holme\mangadex_requester.py\discord_bot.py"
+nssm install MangaDexRequester2.0 "C:\Users\holme\AppData\Local\Programs\Python\Python313\python.exe" "C:\Users\holme\mangadex_requester.py\discord_bot.py"
+
+Note: The name doesn't need quotes
